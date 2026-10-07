@@ -5,7 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "crewai[gemini,google-genai]>=1.15.23",
+    "crewai[google-genai]>=1.15.23",
     "streamlit>=1.65.0",
 ]
 

@@ -1,12 +1,82 @@
 from crewai import Agent, Crew, LLM, Process, Task
 
 # ---------------------------------------------------------
-# LLM
+# MODEL CONFIG
 # ---------------------------------------------------------
 
-llm = LLM(
-    model="gemini/gemini-3.5-flash-lite",
-)
+GEMINI_MODEL = "gemini/gemini-3.5-flash-lite"
+
+
+def create_gemini_llm() -> LLM:
+    """
+    Create the Gemini LLM used by all CrewAI agents.
+    """
+
+    return LLM(
+        model=GEMINI_MODEL,
+    )
+
+
+# ---------------------------------------------------------
+# REVIEW MODES
+# ---------------------------------------------------------
+
+SUPPORTED_REVIEW_MODES = {
+    "full_repository",
+    "latest_commit",
+    "uncommitted",
+}
+
+
+def _get_review_scope(
+    review_mode: str,
+) -> str:
+    """
+    Return instructions describing exactly what
+    should be reviewed for the selected mode.
+    """
+
+    if review_mode == "latest_commit":
+        return """
+REVIEW MODE: Latest Commit
+
+Focus primarily on code introduced or changed in the latest Git commit.
+
+Start by using Git tools to:
+1. Get the latest commit information.
+2. Get files changed in the latest commit.
+3. Read the latest commit diff.
+
+Use normal code-reading tools only when surrounding context is needed.
+
+Do not turn unrelated pre-existing issues into findings unless they are
+directly relevant to understanding the changed code.
+"""
+
+    if review_mode == "uncommitted":
+        return """
+REVIEW MODE: Uncommitted Changes
+
+Focus primarily on staged, unstaged, and untracked changes in the current
+working tree.
+
+Start by using Git tools to:
+1. Inspect Git status.
+2. Get changed files.
+3. Inspect the available Git diff.
+4. Read untracked files directly when necessary.
+
+Do not report unrelated problems from untouched parts of the repository.
+"""
+
+    return """
+REVIEW MODE: Full Repository
+
+Review the repository as a whole.
+
+Inspect the overall project structure and the source files necessary to
+understand the application, bugs, security risks, and testing quality.
+"""
 
 
 # ---------------------------------------------------------
@@ -14,19 +84,40 @@ llm = LLM(
 # ---------------------------------------------------------
 
 
-def build_code_review_crew(code_tools=None, test_tools=None):
+def build_code_review_crew(
+    code_tools=None,
+    test_tools=None,
+    git_tools=None,
+    review_mode="full_repository",
+):
     """
-    Build and return the complete Code Review Crew.
+    Build and return the CrewAI code review crew.
 
-    code_tools:
-        Tools used for reading/searching source code.
-
-    test_tools:
-        Tools used for detecting and running tests.
+    Supported review modes:
+        full_repository
+        latest_commit
+        uncommitted
     """
 
     code_tools = code_tools or []
     test_tools = test_tools or []
+    git_tools = git_tools or []
+
+    review_mode = review_mode.strip().lower()
+
+    if review_mode not in SUPPORTED_REVIEW_MODES:
+        raise ValueError(
+            "Unsupported review mode. Use: "
+            "full_repository, latest_commit, or uncommitted."
+        )
+
+    review_scope = _get_review_scope(review_mode)
+
+    llm = create_gemini_llm()
+
+    # Git tools are only necessary for
+    # Git-focused review modes.
+    active_git_tools = git_tools if review_mode != "full_repository" else []
 
     # -----------------------------------------------------
     # AGENT 1: CODE ANALYST
@@ -35,22 +126,20 @@ def build_code_review_crew(code_tools=None, test_tools=None):
     code_analyst = Agent(
         role="Code Analyst",
         goal=(
-            "Understand the software project's structure, purpose, "
-            "technology stack, important files, modules, and execution flow."
+            "Understand the software project and identify "
+            "the code relevant to the selected review scope."
         ),
         backstory=(
-            "You are an experienced software engineer who specializes in "
-            "quickly understanding unfamiliar codebases. Your responsibility "
-            "is to build a clear technical picture of the project before "
-            "other reviewers perform deeper analysis."
+            "You are an experienced software engineer who quickly "
+            "understands unfamiliar repositories. You identify the "
+            "technology stack, architecture, important files, execution "
+            "flow, and relevant code changes before deeper reviewers begin."
         ),
         llm=llm,
-        tools=code_tools,
+        tools=(code_tools + active_git_tools),
         verbose=True,
         allow_delegation=False,
-        # Keep free-tier LLM usage controlled.
         max_iter=4,
-        # Do not automatically repeat failed LLM calls.
         max_retry_limit=0,
     )
 
@@ -61,17 +150,17 @@ def build_code_review_crew(code_tools=None, test_tools=None):
     bug_hunter = Agent(
         role="Bug Hunter",
         goal=(
-            "Find real bugs, incorrect logic, runtime risks, edge cases, "
-            "and weak error handling in the project."
+            "Find concrete bugs, incorrect logic, runtime failures, "
+            "unsafe assumptions, and edge-case problems relevant "
+            "to the selected review scope."
         ),
         backstory=(
             "You are a senior software engineer experienced in debugging "
-            "production applications. You focus on concrete problems that "
-            "can cause crashes, incorrect results, broken workflows, or "
-            "unexpected application behavior."
+            "production systems. You report problems supported by actual "
+            "code evidence rather than speculative concerns."
         ),
         llm=llm,
-        tools=code_tools,
+        tools=(code_tools + active_git_tools),
         verbose=True,
         allow_delegation=False,
         max_iter=4,
@@ -85,17 +174,17 @@ def build_code_review_crew(code_tools=None, test_tools=None):
     security_reviewer = Agent(
         role="Security Reviewer",
         goal=(
-            "Identify security weaknesses in authentication, authorization, "
-            "input validation, secrets handling, file access, API usage, "
-            "and other security-sensitive areas."
+            "Identify concrete security weaknesses relevant "
+            "to the selected repository review scope."
         ),
         backstory=(
-            "You are an application security engineer who reviews software "
-            "for practical vulnerabilities. You avoid inventing security "
-            "problems and report only issues supported by the available code."
+            "You are an application security engineer. You review "
+            "authentication, authorization, input validation, secrets, "
+            "file access, APIs, and sensitive-data handling. You report "
+            "only vulnerabilities supported by available code evidence."
         ),
         llm=llm,
-        tools=code_tools,
+        tools=(code_tools + active_git_tools),
         verbose=True,
         allow_delegation=False,
         max_iter=4,
@@ -109,20 +198,17 @@ def build_code_review_crew(code_tools=None, test_tools=None):
     test_engineer = Agent(
         role="Test Engineer",
         goal=(
-            "Evaluate the project's tests, identify missing coverage, "
-            "important untested scenarios, and test failures."
+            "Evaluate testing quality and determine whether the "
+            "selected code changes are adequately protected by tests."
         ),
         backstory=(
             "You are a software test engineer experienced in unit, "
-            "integration, and API testing. You focus on high-value tests "
-            "that protect important application behavior rather than "
-            "creating unnecessary tests."
+            "integration, regression, and API testing. You identify "
+            "high-value testing gaps and use actual test execution "
+            "results when test tools are available."
         ),
         llm=llm,
-        # Code-reading tools are always available.
-        # Test execution tools are optional and are only supplied
-        # when the user enables --run-tests.
-        tools=code_tools + test_tools,
+        tools=(code_tools + active_git_tools + test_tools),
         verbose=True,
         allow_delegation=False,
         max_iter=4,
@@ -136,14 +222,14 @@ def build_code_review_crew(code_tools=None, test_tools=None):
     senior_reviewer = Agent(
         role="Senior Code Reviewer",
         goal=(
-            "Combine all review findings into a clear, accurate, "
-            "prioritized code review report."
+            "Combine all agent findings into an accurate, concise, "
+            "prioritized engineering review."
         ),
         backstory=(
             "You are a senior software engineer responsible for final "
-            "technical reviews before code reaches production. You remove "
-            "duplicate findings, reject unsupported claims, prioritize "
-            "problems by severity, and provide practical recommendations."
+            "code reviews. You remove duplicates, reject unsupported "
+            "claims, normalize severity levels, and produce practical "
+            "recommendations developers can act on."
         ),
         llm=llm,
         verbose=True,
@@ -153,69 +239,76 @@ def build_code_review_crew(code_tools=None, test_tools=None):
     )
 
     # -----------------------------------------------------
-    # TASK 1: ANALYZE PROJECT
+    # TASK 1: PROJECT / CHANGE ANALYSIS
     # -----------------------------------------------------
 
     analyze_project_task = Task(
         description=(
-            "Analyze the software project located at:\n"
+            f"{review_scope}\n\n"
+            "The repository is located at:\n"
             "{project_path}\n\n"
-            "Start by listing the project files. Then read only the files "
-            "needed to understand the project.\n\n"
             "Determine:\n"
-            "- the purpose of the project\n"
+            "- project purpose\n"
             "- programming language and technology stack\n"
-            "- important files and modules\n"
-            "- application entry points\n"
-            "- major components\n"
-            "- how components interact\n"
-            "- overall execution flow\n\n"
-            "Do not perform a detailed bug or security review yet.\n"
-            "Avoid repeatedly reading the same files unless necessary."
+            "- important files/modules relevant to this review\n"
+            "- application entry points when relevant\n"
+            "- main components involved\n"
+            "- execution flow\n"
+            "- files or changes requiring deeper review\n\n"
+            "For Git-focused review modes, inspect Git information first "
+            "and then read only the code necessary to understand the changes.\n\n"
+            "Avoid repeatedly reading the same files unless additional "
+            "context is genuinely required.\n\n"
+            "Do not perform the detailed bug or security review yet."
         ),
         expected_output=(
-            "A concise technical overview containing:\n"
-            "1. Project purpose\n"
-            "2. Technology stack\n"
-            "3. Important files/modules\n"
-            "4. Main components\n"
-            "5. Execution flow\n"
-            "6. Areas that deserve deeper review"
+            "A concise technical analysis containing:\n"
+            "1. Review scope\n"
+            "2. Project purpose\n"
+            "3. Technology stack\n"
+            "4. Relevant files/modules\n"
+            "5. Main execution flow\n"
+            "6. Changed areas when Git review is active\n"
+            "7. Areas requiring deeper review"
         ),
         agent=code_analyst,
     )
 
     # -----------------------------------------------------
-    # TASK 2: FIND BUGS
+    # TASK 2: BUG REVIEW
     # -----------------------------------------------------
 
     bug_review_task = Task(
         description=(
-            "Perform a focused bug review of the project located at:\n"
+            f"{review_scope}\n\n"
+            "Repository:\n"
             "{project_path}\n\n"
-            "Use the previous project analysis as context.\n\n"
-            "Inspect relevant source files and look for:\n"
-            "- incorrect business logic\n"
+            "Use the Code Analyst result as context.\n\n"
+            "Look for:\n"
+            "- incorrect logic\n"
             "- runtime errors\n"
+            "- broken conditions\n"
             "- unsafe assumptions\n"
             "- missing edge-case handling\n"
-            "- incorrect conditions\n"
-            "- broken control flow\n"
             "- exception-handling problems\n"
-            "- resource-handling problems\n\n"
-            "Do not report speculative issues without evidence.\n"
-            "Do not repeatedly inspect files that are unrelated to the review."
+            "- resource-handling problems\n"
+            "- regressions introduced by changed code\n\n"
+            "For Git-focused reviews, findings should normally relate "
+            "to changed code or consequences directly caused by the change.\n\n"
+            "Inspect only the files necessary to support a finding.\n\n"
+            "Do not report speculative problems."
         ),
         expected_output=(
-            "A list of confirmed or strongly supported bugs.\n\n"
-            "For every issue include:\n"
+            "A list of supported bugs.\n\n"
+            "For each finding include:\n"
             "- Severity\n"
             "- File\n"
             "- Relevant line/location when available\n"
             "- Problem\n"
-            "- Why it matters\n"
+            "- Evidence\n"
+            "- Impact\n"
             "- Recommended fix\n\n"
-            "If no meaningful bug is found, clearly state that."
+            "Clearly state if no meaningful bug was found."
         ),
         agent=bug_hunter,
     )
@@ -226,31 +319,35 @@ def build_code_review_crew(code_tools=None, test_tools=None):
 
     security_review_task = Task(
         description=(
-            "Perform a security review of the project located at:\n"
+            f"{review_scope}\n\n"
+            "Repository:\n"
             "{project_path}\n\n"
-            "Use the previous project analysis as context.\n\n"
-            "Inspect security-relevant files and check areas including:\n"
-            "- authentication\n"
-            "- authorization\n"
-            "- input validation\n"
+            "Use previous analysis as context.\n\n"
+            "Review relevant code for:\n"
+            "- authentication weaknesses\n"
+            "- authorization problems\n"
+            "- input validation failures\n"
             "- injection risks\n"
-            "- secret handling\n"
-            "- unsafe file access\n"
-            "- insecure API usage\n"
-            "- sensitive data exposure\n"
-            "- dependency-related risks when visible\n\n"
-            "Only report vulnerabilities supported by actual code evidence."
+            "- secret exposure\n"
+            "- unsafe filesystem access\n"
+            "- insecure API behavior\n"
+            "- sensitive-data exposure\n"
+            "- dependency risks visible from repository files\n\n"
+            "For Git-focused reviews, prioritize vulnerabilities "
+            "introduced, modified, or exposed by the selected changes.\n\n"
+            "Inspect only the files necessary to support findings.\n\n"
+            "Report only issues supported by actual code evidence."
         ),
         expected_output=(
-            "A security review containing supported findings only.\n\n"
-            "For every finding include:\n"
+            "A security assessment containing supported findings.\n\n"
+            "For each finding include:\n"
             "- Severity\n"
-            "- File\n"
+            "- File/location\n"
             "- Vulnerability\n"
             "- Evidence\n"
             "- Potential impact\n"
             "- Recommended mitigation\n\n"
-            "Clearly state if no meaningful security issue is identified."
+            "State clearly if no meaningful vulnerability is identified."
         ),
         agent=security_reviewer,
     )
@@ -261,29 +358,32 @@ def build_code_review_crew(code_tools=None, test_tools=None):
 
     test_review_task = Task(
         description=(
-            "Review the testing quality of the project located at:\n"
+            f"{review_scope}\n\n"
+            "Repository:\n"
             "{project_path}\n\n"
-            "Use the previous project analysis as context.\n\n"
-            "Inspect existing test files.\n"
-            "If a test-execution tool is available, first detect the test "
-            "setup and then run the supported test suite when appropriate.\n\n"
+            "Use previous analysis as context.\n\n"
             "Determine:\n"
-            "- what is currently tested\n"
-            "- whether existing tests pass or fail when execution is enabled\n"
-            "- important missing test cases\n"
-            "- missing edge-case coverage\n"
+            "- what functionality is currently tested\n"
+            "- whether changed functionality has relevant tests\n"
+            "- missing regression tests\n"
+            "- important edge cases\n"
             "- weak or misleading tests\n"
-            "- high-risk functionality without tests\n\n"
-            "Prioritize useful tests rather than suggesting tests for "
-            "every function."
+            "- high-risk functionality without coverage\n\n"
+            "If test execution tools are available:\n"
+            "1. Detect the project's test setup.\n"
+            "2. Run the supported test suite when appropriate.\n"
+            "3. Report the actual command, exit status, and test result.\n\n"
+            "Never claim that tests passed unless a test tool actually "
+            "executed them successfully during this review."
         ),
         expected_output=(
             "A testing assessment containing:\n"
-            "1. Existing test coverage overview\n"
-            "2. Test execution result when available\n"
-            "3. Missing high-priority tests\n"
-            "4. Important edge cases\n"
-            "5. Recommended testing improvements"
+            "1. Existing test coverage\n"
+            "2. Test execution result, if actually executed\n"
+            "3. Change-specific test coverage when applicable\n"
+            "4. Missing high-priority tests\n"
+            "5. Important edge cases\n"
+            "6. Recommended testing improvements"
         ),
         agent=test_engineer,
     )
@@ -294,43 +394,50 @@ def build_code_review_crew(code_tools=None, test_tools=None):
 
     final_review_task = Task(
         description=(
-            "Review all previous analysis produced by the Code Analyst, "
-            "Bug Hunter, Security Reviewer, and Test Engineer.\n\n"
-            "Create the final professional code review report.\n\n"
+            f"{review_scope}\n\n"
+            "Combine the Code Analyst, Bug Hunter, Security Reviewer, "
+            "and Test Engineer outputs into the final review.\n\n"
             "Requirements:\n"
             "- remove duplicate findings\n"
             "- reject unsupported claims\n"
-            "- prioritize issues based on actual impact\n"
-            "- keep recommendations practical and specific\n"
-            "- do not invent files, line numbers, vulnerabilities, or bugs\n"
-            "- clearly distinguish confirmed issues from recommendations"
+            "- normalize severity consistently\n"
+            "- prioritize based on actual impact\n"
+            "- preserve the selected review scope\n"
+            "- do not invent files or line numbers\n"
+            "- do not claim tests passed unless test execution evidence exists\n"
+            "- distinguish confirmed defects from optional improvements\n\n"
+            "For Git-focused modes, make it clear that findings refer "
+            "to the selected changes rather than presenting the output "
+            "as a complete repository audit."
         ),
         expected_output=(
             "# Code Review Report\n\n"
+            "## Review Scope\n"
+            "State whether this was a full repository, latest commit, "
+            "or uncommitted changes review.\n\n"
             "## Project Overview\n"
-            "Brief explanation of the reviewed project.\n\n"
+            "Brief technical overview.\n\n"
             "## Review Summary\n"
-            "Number of Critical, High, Medium, and Low findings.\n\n"
+            "Critical, High, Medium, and Low finding counts.\n\n"
             "## Findings\n"
-            "For every meaningful finding include:\n"
+            "For each meaningful finding include:\n"
             "- Severity\n"
             "- Category\n"
             "- File/location\n"
             "- Problem\n"
+            "- Evidence\n"
             "- Impact\n"
             "- Recommendation\n\n"
-            "## Testing Gaps\n"
-            "Important missing or weak tests.\n\n"
+            "## Testing\n"
+            "Include actual test execution results only when tests "
+            "were executed, plus important testing gaps.\n\n"
             "## Positive Observations\n"
-            "Good engineering practices actually observed in the code.\n\n"
+            "Good practices supported by evidence.\n\n"
             "## Recommended Fix Order\n"
-            "Prioritized action plan from highest to lowest importance.\n\n"
-            "The report must be specific to the reviewed project and "
-            "must not contain generic filler."
+            "Prioritized next actions."
         ),
         agent=senior_reviewer,
         markdown=True,
-        output_file="code_review_report.md",
     )
 
     # -----------------------------------------------------
@@ -352,14 +459,12 @@ def build_code_review_crew(code_tools=None, test_tools=None):
             test_review_task,
             final_review_task,
         ],
-        # Run tasks one after another.
         process=Process.sequential,
         verbose=True,
-        # Keep unnecessary extra LLM calls disabled.
         memory=False,
         planning=False,
-        # Gemini free tier currently showed a 5 RPM limit
-        # in our run, so we stay below that.
+        # Conservative rate limit for the
+        # Gemini free tier.
         max_rpm=4,
     )
 

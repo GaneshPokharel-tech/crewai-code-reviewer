@@ -741,7 +741,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "crewai", extras = ["gemini", "google-genai"], specifier = ">=1.15.23" },
+    { name = "crewai", extras = ["google-genai"], specifier = ">=1.15.23" },
     { name = "streamlit", specifier = ">=1.65.0" },
 ]
 
