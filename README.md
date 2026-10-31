@@ -1,228 +1,376 @@
+
 # CrewAI Code Reviewer
 
-AI-powered multi-agent code review application built with **CrewAI, Streamlit, Git, and Gemini**.
+### Multi-Agent Code Review with CrewAI, Gemini, and Git
 
-The application reviews either a public GitHub repository or a local Git repository using specialized AI agents for code analysis, bug detection, security review, test assessment, and final review consolidation.
+CrewAI Code Reviewer is an AI-assisted software engineering application that analyses Git repositories using five specialised AI agents.
 
----
+Built with **CrewAI, Python, Gemini, Streamlit, and Git**, the system supports repository analysis, bug detection, security review, test assessment, and structured review reporting.
 
-## Features
+The project explores how specialised AI agents can collaborate through a sequential workflow to produce more organised and evidence-based code reviews.
 
-### Multi-Agent Code Review
-
-The application uses five specialized CrewAI agents:
-
-#### 1. Code Analyst
-- Understands project structure
-- Detects the technology stack
-- Identifies important modules and entry points
-- Understands execution flow
-- Analyzes relevant Git changes
-
-#### 2. Bug Hunter
-- Detects runtime errors
-- Finds logic problems
-- Reviews unsafe assumptions
-- Identifies edge cases
-- Detects regressions
-
-#### 3. Security Reviewer
-- Reviews authentication and authorization
-- Checks input validation
-- Detects secret exposure
-- Reviews unsafe filesystem access
-- Identifies API and application security weaknesses
-
-#### 4. Test Engineer
-- Detects existing test setup
-- Reviews test coverage
-- Identifies missing regression tests
-- Identifies important edge cases
-- Can execute supported tests when explicitly enabled
-
-#### 5. Senior Code Reviewer
-- Consolidates findings from all agents
-- Removes duplicate findings
-- Rejects unsupported claims
-- Normalizes severity levels
-- Generates the final code review report
+> **Project type:** AI Engineering / Multi-Agent Systems / Developer Tooling  
+> **Status:** Functional portfolio and learning project
 
 ---
 
-## Review Sources
+## Overview
 
-The application supports two repository sources.
+The application accepts either a public GitHub repository or a local Git repository.
 
-### GitHub Repository
+Users can review an entire codebase, inspect the latest commit, or analyse uncommitted local changes.
 
-Provide a public GitHub repository URL:
+The review process is divided across five agents, each responsible for a specific engineering concern.
+
+Rather than relying on a single general-purpose reviewer, the system separates code understanding, bug analysis, security assessment, testing considerations, and final report consolidation.
+
+### Core Capabilities
+
+- Multi-agent code review using CrewAI
+- Five specialised review agents
+- Public GitHub repository analysis
+- Local Git repository analysis
+- Full repository and latest-commit review
+- Uncommitted-change review for local repositories
+- Bug and regression detection
+- Security-oriented code analysis
+- Test coverage and test-gap assessment
+- Optional test execution with explicit consent
+- Consolidated Markdown review reports
+- Downloadable review results
+
+---
+
+## Multi-Agent Architecture
+
+The system follows a sequential CrewAI workflow.
+
+```mermaid
+flowchart TD
+    A["GitHub or Local Repository"] --> B["Repository Inspection"]
+    B --> C["Code Analyst"]
+    C --> D["Bug Hunter"]
+    D --> E["Security Reviewer"]
+    E --> F["Test Engineer"]
+    F --> G["Senior Code Reviewer"]
+    G --> H["Consolidated Review Report"]
+```
+
+Each agent receives context from the preceding review stages.
+
+The final reviewer consolidates the findings into a structured report, reducing duplication and identifying claims that need stronger evidence.
+
+---
+
+## Agent Responsibilities
+
+| Agent | Engineering Responsibility |
+| :--- | :--- |
+| **Code Analyst** | Understands project structure, technology stack, modules, execution flow, and relevant code changes |
+| **Bug Hunter** | Identifies potential runtime errors, logic problems, edge cases, unsafe assumptions, and regressions |
+| **Security Reviewer** | Examines authentication, authorization, input validation, secret exposure, and potentially unsafe operations |
+| **Test Engineer** | Reviews test configuration, existing coverage, missing cases, and regression risks |
+| **Senior Code Reviewer** | Consolidates findings, removes duplicates, checks supporting evidence, and standardises severity levels |
+
+### Why a Multi-Agent Design?
+
+Different review tasks require different perspectives.
+
+A bug-focused reviewer may identify logic problems, while a security-focused reviewer examines trust boundaries and potentially unsafe inputs.
+
+Separating these responsibilities makes the review process easier to organise, inspect, and extend.
+
+However, using multiple agents does not automatically guarantee better findings. Review quality still depends on repository context, model behaviour, and evidence verification.
+
+---
+
+## Repository Sources
+
+### Public GitHub Repositories
+
+The application accepts a public GitHub repository URL.
 
 ```text
 https://github.com/owner/repository
 ```
 
-Supported modes:
+Supported review modes:
 
 - Full Repository
 - Latest Commit
 
-GitHub repositories are cloned into a temporary workspace and automatically removed after the review completes.
+GitHub repositories are cloned into a temporary workspace for inspection.
 
-### Local Repository
+The temporary clone is removed after the review workflow completes.
 
-Provide the absolute path of a local Git repository:
+### Local Git Repositories
+
+The application also accepts an absolute local repository path.
 
 ```text
 /Users/username/projects/my-project
 ```
 
-Supported modes:
+Supported review modes:
 
 - Full Repository
 - Latest Commit
 - Uncommitted Changes
 
-The application reviews the local repository directly.
+Local repository inspection uses read-only Git operations.
 
-It does not automatically commit, push, reset, or modify repository files.
+The normal review workflow does not automatically commit, push, reset, or modify the selected repository's source files.
+
+Optional test execution is a separate operation and carries additional risks.
 
 ---
 
 ## Review Modes
 
-### Full Repository
+| Mode | GitHub | Local Repository |
+| :--- | :---: | :---: |
+| Full Repository | Yes | Yes |
+| Latest Commit | Yes | Yes |
+| Uncommitted Changes | No | Yes |
 
-Reviews the repository as a whole.
+### Full Repository Review
 
-Useful for:
+Analyses the repository as a whole.
 
-- Initial repository audits
-- Understanding unfamiliar codebases
-- General bug review
-- Security review
-- Test coverage assessment
+Useful for understanding:
 
-### Latest Commit
+- Project structure
+- Core modules
+- Potential bugs
+- Security concerns
+- Testing practices
+- Maintainability risks
 
-Reviews the latest Git commit and its impact.
+### Latest Commit Review
 
-The agents inspect:
+Focuses on the latest commit and its potential impact.
 
-- Latest commit metadata
+The workflow examines:
+
+- Commit metadata
 - Changed files
-- Git diff
-- Relevant surrounding source code
-- Potential regressions
-- Security impact
+- Git diffs
+- Relevant surrounding code
+- Possible regressions
+- Security implications
 - Missing tests
 
-For GitHub repositories, the application clones enough Git history to compare the latest commit with its parent.
+### Uncommitted Changes Review
 
-### Uncommitted Changes
-
-Available for local repositories.
+Available for local Git repositories.
 
 Reviews:
 
 - Staged changes
 - Unstaged changes
 - Untracked files
-- Git diff
-- Changed source code
+- Working-tree diffs
+- Relevant source context
 
-This mode is useful before committing changes.
-
----
-
-## AI Model
-
-The current version uses:
-
-```text
-Gemini 3.5 Flash Lite
-```
-
-All five CrewAI agents use Gemini.
-
-The application uses conservative request throttling to reduce the chance of exceeding free-tier API limits.
+This mode is designed to support developer self-review before committing.
 
 ---
 
-## Custom Tools
+## Tooling and Repository Inspection
 
-Custom tools are defined in `tools.py`.
+The application provides custom tools through `tools.py`.
 
-### Code Tools
+### Code Inspection
 
 - List repository files
 - Read source files
 - Search repository code
 
-### Git Tools
+### Git Inspection
 
-- Get Git status
-- Get latest Git commit
-- Detect changed files
-- Read Git diff
+- Inspect Git status
+- Read commit information
+- Identify changed files
+- Examine Git diffs
 
-The Git inspection tools are read-only.
+### Test Assessment
 
-### Test Tools
+- Detect Python test configuration
+- Detect Node.js test configuration
+- Identify available test commands
+- Optionally run supported tests
 
-- Detect Python test setup
-- Detect Node.js test setup
-- Run Python tests with pytest
-- Run Node.js tests with npm
-
-Test execution is disabled by default.
+The Git inspection tools are designed for read-only analysis.
 
 ---
 
 ## Test Execution Safety
 
-Running repository tests may execute arbitrary code from the selected repository.
-
-For this reason:
+**Repository test execution is disabled by default.**
 
 ```text
-Run repository tests = OFF
+Run repository tests: OFF
 ```
 
-by default.
+The user must explicitly enable test execution and acknowledge the warning.
 
-The user must explicitly enable test execution and confirm the warning before tests can run.
+This restriction matters because test scripts can execute arbitrary code from the selected repository.
 
-Only enable test execution for repositories you trust.
+Enabling tests may run commands that access files, execute processes, or modify the local environment.
+
+**Only run tests for repositories you trust.**
+
+For untrusted repositories, use a properly isolated environment with restricted permissions, filesystem access, and network access.
+
+The current application should not be treated as a complete sandbox for arbitrary code execution.
 
 ---
 
-## Architecture
+## AI Model and Orchestration
 
-```text
-Repository
-    |
-    v
-Code Analyst
-    |
-    v
-Bug Hunter
-    |
-    v
-Security Reviewer
-    |
-    v
-Test Engineer
-    |
-    v
-Senior Code Reviewer
-    |
-    v
-Final Markdown Review
+The application uses Gemini through CrewAI.
+
+The five specialised agents share the configured Gemini model and execute their tasks sequentially.
+
+### Request Throttling
+
+The documented Crew configuration includes:
+
+```python
+max_rpm = 4
 ```
 
-CrewAI runs the agents sequentially.
+This conservative request limit helps manage API usage.
 
-Each reviewer receives context from earlier stages of the review.
+During execution, CrewAI may pause when the configured request limit is reached.
+
+Review duration depends on repository size, model response times, and API availability.
+
+---
+
+## Final Review Report
+
+The Senior Code Reviewer generates a structured Markdown report.
+
+### Report Sections
+
+1. Review Scope
+2. Project Overview
+3. Review Summary
+4. Findings
+5. Testing Assessment
+6. Positive Observations
+7. Recommended Fix Order
+
+### Finding Structure
+
+Individual findings may include:
+
+| Field | Description |
+| :--- | :--- |
+| Severity | Relative importance of the issue |
+| Category | Bug, security, testing, or maintainability |
+| Location | File or relevant code location |
+| Problem | Description of the suspected issue |
+| Evidence | Supporting code or repository context |
+| Impact | Potential consequence |
+| Recommendation | Suggested correction |
+
+The final report can be downloaded from the Streamlit interface.
+
+**Important:** AI-generated findings are review suggestions. Developers should verify important findings before changing production code or making security-sensitive decisions.
+
+---
+
+## Technology Stack
+
+| Technology | Purpose |
+| :--- | :--- |
+| Python 3.12 | Core application |
+| CrewAI | Multi-agent orchestration |
+| Google Gemini | Language model |
+| Streamlit | User interface |
+| Git | Repository and change inspection |
+| uv | Dependency management |
+
+---
+
+## Getting Started
+
+### Prerequisites
+
+- Python 3.12
+- Git
+- uv package manager
+- Gemini API key
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/GaneshPokharel-tech/crewai-code-reviewer.git
+cd crewai-code-reviewer
+```
+
+### 2. Install Dependencies
+
+```bash
+uv sync
+```
+
+### 3. Configure Environment Variables
+
+Create a `.env` file in the project root.
+
+```env
+GEMINI_API_KEY=your_gemini_api_key
+```
+
+Never commit actual credentials.
+
+### 4. Run the Application
+
+```bash
+uv run streamlit run main.py
+```
+
+Streamlit will display a local application URL, usually:
+
+```text
+http://localhost:8501
+```
+
+---
+
+## Usage Examples
+
+### Review a Public GitHub Repository
+
+1. Select `GitHub Repository`.
+2. Enter a public repository URL.
+3. Choose `Full Repository` or `Latest Commit`.
+4. Keep test execution disabled unless the repository is trusted.
+5. Click `Review Repository`.
+6. Review or download the generated report.
+
+Example URL:
+
+```text
+https://github.com/owner/repository
+```
+
+### Review Local Uncommitted Changes
+
+1. Select `Local Repository`.
+2. Enter the absolute path of a Git repository.
+3. Select `Uncommitted Changes`.
+4. Click `Review Repository`.
+5. Examine the generated findings before committing.
+
+Example path:
+
+```text
+/Users/username/projects/my-project
+```
 
 ---
 
@@ -230,6 +378,7 @@ Each reviewer receives context from earlier stages of the review.
 
 ```text
 crewai-code-reviewer/
+│
 ├── main.py
 ├── crew.py
 ├── tools.py
@@ -237,301 +386,68 @@ crewai-code-reviewer/
 ├── uv.lock
 ├── .python-version
 ├── .gitignore
-├── .env
 └── README.md
 ```
 
-### `main.py`
+### Component Responsibilities
 
-Streamlit application responsible for:
+| File | Responsibility |
+| :--- | :--- |
+| `main.py` | Streamlit interface, repository selection, validation, execution, and report display |
+| `crew.py` | CrewAI agents, tasks, model configuration, and sequential orchestration |
+| `tools.py` | Code inspection, Git tools, test detection, and optional test execution |
 
-- User interface
-- GitHub URL validation
-- Local repository validation
-- Repository cloning
-- Review source selection
-- Review mode selection
-- Optional test execution
-- Crew execution
-- Error handling
-- Final report display
-- Markdown report download
-
-### `crew.py`
-
-Defines:
-
-- Gemini model configuration
-- Five CrewAI agents
-- Review-mode instructions
-- Agent tasks
-- Sequential Crew workflow
-
-### `tools.py`
-
-Defines:
-
-- Repository file tools
-- Source-code search tools
-- Git inspection tools
-- Test setup detection
-- Test execution
+This structure separates application interaction, agent coordination, and repository tooling.
 
 ---
 
-## Requirements
+## Security Considerations
 
-- Python 3.12
-- Git
-- uv
-- Gemini API key
+The documented implementation includes controls intended to reduce risks during repository inspection:
 
----
+- Validation of GitHub repository URLs
+- Rejection of embedded URL credentials
+- Repository-root restrictions for file access
+- Path traversal checks
+- Limits on large files
+- Skipping binary files
+- Exclusion of common generated directories
+- Read-only Git inspection commands
+- Subprocess execution using `shell=False`
+- Explicit consent before optional test execution
+- Cleanup of temporary GitHub clones
 
-## Installation
+These controls reduce selected risks but do not guarantee complete isolation from malicious repositories.
 
-Clone the repository:
+### Code Privacy
 
-```bash
-git clone https://github.com/YOUR_USERNAME/crewai-code-reviewer.git
-cd crewai-code-reviewer
-```
+Repository content may be supplied to the configured Gemini API during AI analysis.
 
-Install dependencies:
-
-```bash
-uv sync
-```
-
----
-
-## Environment Variables
-
-Create a `.env` file in the project root:
-
-```env
-GEMINI_API_KEY=your_gemini_api_key_here
-```
-
-Do not commit `.env`.
-
-The project `.gitignore` excludes environment secrets.
-
----
-
-## Run the Application
-
-Start Streamlit:
-
-```bash
-uv run streamlit run main.py
-```
-
-Streamlit will show a local URL, usually:
-
-```text
-http://localhost:8501
-```
-
-Open that URL in your browser.
-
----
-
-## Example: GitHub Repository Review
-
-Select:
-
-```text
-Review Source:
-GitHub Repository
-```
-
-Enter:
-
-```text
-https://github.com/owner/repository
-```
-
-Choose either:
-
-```text
-Full Repository
-```
-
-or:
-
-```text
-Latest Commit
-```
-
-Then click:
-
-```text
-Review Repository
-```
-
----
-
-## Example: Local Uncommitted Review
-
-Select:
-
-```text
-Review Source:
-Local Repository
-```
-
-Enter:
-
-```text
-/Users/username/projects/my-project
-```
-
-Choose:
-
-```text
-Uncommitted Changes
-```
-
-Then click:
-
-```text
-Review Repository
-```
-
-The agents will focus on the current Git working-tree changes.
-
----
-
-## Final Review Report
-
-The Senior Code Reviewer produces a Markdown report containing:
-
-- Review Scope
-- Project Overview
-- Review Summary
-- Findings
-- Testing
-- Positive Observations
-- Recommended Fix Order
-
-Each meaningful finding may contain:
-
-- Severity
-- Category
-- File or location
-- Problem
-- Evidence
-- Impact
-- Recommended fix
-
-The final report can be downloaded directly from the Streamlit interface.
-
----
-
-## Rate Limiting
-
-The Crew currently uses:
-
-```python
-max_rpm=4
-```
-
-This is intentionally conservative for Gemini free-tier usage.
-
-During a review, CrewAI may display:
-
-```text
-Max RPM reached, waiting for next minute to start.
-```
-
-This is expected throttling behavior and does not necessarily indicate a failure.
-
----
-
-## Security Controls
-
-The application includes several safety controls:
-
-- GitHub repository URLs are validated
-- Embedded credentials in URLs are rejected
-- Repository file access is restricted to the selected project root
-- Path traversal outside the repository is blocked
-- Large files are limited
-- Binary files are skipped
-- Common generated directories are ignored
-- Git inspection commands are read-only
-- Subprocess commands use `shell=False`
-- Test execution requires explicit user confirmation
-- Temporary GitHub clones are deleted after review
-
----
-
-## Current Limitations
-
-### GitHub
-
-Currently supports:
-
-- Public GitHub repositories
-
-Not yet implemented:
-
-- Private repository authentication
-- Pull-request-specific review
-- Branch selection
-- Commit-range comparison
-- GitHub inline review comments
-
-### Testing
-
-Automatic execution currently focuses on:
-
-- Python projects using pytest
-- Node.js projects using an npm test script
-
-Other ecosystems are not automatically executed yet.
-
-### AI Review
-
-AI-generated findings should be treated as engineering assistance.
-
-Developers should verify important findings before making production, security, or deployment decisions.
-
----
-
-## Technology Stack
-
-- Python 3.12
-- CrewAI
-- Streamlit
-- Gemini
-- Git
-- uv
+Do not review confidential or proprietary code unless you are authorised to share that content with the model provider.
 
 ---
 
 ## Development Commands
 
-Syntax check:
+### Python Syntax Check
 
 ```bash
 uv run python -m py_compile main.py crew.py tools.py
 ```
 
-Check repository status:
+### Git Status
 
 ```bash
 git status
 ```
 
-Check diff formatting:
+### Git Diff Validation
 
 ```bash
 git diff --check
 ```
 
-Run the application:
+### Run Application
 
 ```bash
 uv run streamlit run main.py
@@ -539,32 +455,58 @@ uv run streamlit run main.py
 
 ---
 
+## Current Limitations
+
+**GitHub Integration**
+
+- Supports public repositories only
+- No private GitHub authentication
+- No pull-request-specific review
+- No branch selection
+- No arbitrary commit-range comparison
+- No GitHub inline review comments
+
+**Test Execution**
+
+- Python pytest support
+- Node.js npm test support
+- Other test ecosystems are not automatically executed
+
+**AI Review**
+
+- Model outputs may contain false positives or missed issues
+- Large repositories can increase execution time and API usage
+- Findings require developer validation
+- The application does not replace manual engineering or security review
+
+---
+
 ## Future Improvements
 
-Potential future additions:
+Potential future development areas:
 
-- Pull request review
-- Branch comparison
-- Commit-range review
-- Private GitHub repository support
-- GitHub authentication
-- Inline review comments
+- Pull request analysis
+- Branch and commit-range comparison
+- Authenticated GitHub integration
 - Structured JSON findings
 - Review history
-- More test frameworks
+- Additional test frameworks
 - CI/CD integration
-- Automated pull-request checks
+- Automated pull request checks
+- GitHub inline review comments
+
+These are proposed improvements, not current features.
 
 ---
 
-## Disclaimer
+## Author
 
-This project is an AI-assisted software engineering tool.
+**Ganesh Pokharel**
 
-Generated findings should be verified by developers before applying production changes or making security-sensitive decisions.
+AI Engineer | Python Developer
+
+[GitHub](https://github.com/GaneshPokharel-tech) · [LinkedIn](https://www.linkedin.com/in/ganesh-pokharel-30786b192/)
 
 ---
 
-## License
-
-A license has not yet been selected.
+*Built as a hands-on exploration of multi-agent orchestration, AI-assisted code analysis, and developer tooling.*
